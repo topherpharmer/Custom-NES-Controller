@@ -45,14 +45,12 @@ int main(void)
 	TIMSK0 = 0b00000001;		//Enable TOV0 interrupt
 	TIMSK1 = 0b00000001;		//Enable TOV1 interrupt
 	
-	//usart_init(9600, 8, 1, NONE, TRANSMIT);
-	
 	sei();						//Enable interrupts
 	
     while(1)
 	{
 		
-		if (!playback) GetControllerInput();
+		GetControllerInput();
 		
 		GetRecordButtonState(); //Get record button
 		
@@ -69,7 +67,7 @@ int main(void)
 			recording = 0; //Stop recording if so.
 		}
 		//Stop playback if sequence is complete.
-		if (playbackCount >= inputCount) playback = 0;
+		if (playbackCount >= inputCount - 1) playback = 0;
 	}
 }
 
@@ -81,7 +79,8 @@ void GetControllerInput(void)
 	firstBits = 0x00 | (PIND & 0b11000000);			//Capture PD6:7
 	lastBits =  0x00 | (PINB & 0b00111111);			//Capture PB0:5
 	temp = ((firstBits >> 6) | (lastBits << 2));	//Calculate input
-	input = temp;									//Capture input
+	if (!playback) input = temp;					//Capture input
+	else if (playback && temp != 0xFF) playback = 0;//Stop playback on player input
 }
 
 void SendButtonState(void)
@@ -113,18 +112,16 @@ ISR(INT0_vect)
 	PORTD |= 1 << NES_data;	//Set data line high
 	outputOld = output; //Store previous output
 	output = input;		//Capture current input
-	if (recording && (output != outputOld)) //Record changed inputs
-	{ //TODO: Figure out why not all inputs are being recorded!
-		Record();
-	}
 	
 	pulseCounter = 0;	//Reset pulse counter
 	SendButtonState();	//Send first bit of output to data line
 	
 	if (playback) Playback();
 	
+	//Record changed inputs
+	if (recording && (output != outputOld)) Record();
 	
-	if ((recording) || playback)
+	if (recording || playback)
 	{
 		if (latchCount < MAX_LATCH) latchCount++;
 		else
